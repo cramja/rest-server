@@ -10,7 +10,6 @@
   <version>LOCAL-SNAPSHOT</version>
   <modules>
     <module>core</module>
-    <module>app-crypto</module>
   </modules>
 
   <properties>
