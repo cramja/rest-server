@@ -1,5 +1,7 @@
 package com.cramja.crypto.core;
 
+import static com.cramja.crypto.core.Helpers.checkProofOfWork;
+
 import com.google.common.collect.ImmutableList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 public class Miner implements Peer, Runnable {
     private static final Logger logger = LoggerFactory.getLogger(Miner.class);
+    private static final MinerConfig config = new MinerConfig();
 
     private final String name;
     private final X500PrivateCredential credentials;
@@ -48,12 +51,12 @@ public class Miner implements Peer, Runnable {
                 t.scheduleNextInterval();
                 scheduledTasks.add(t);
             } else {
-//                logger.info("WORK {}", getId());
                 for (int i = 0; i < 100_000; i++) {
                     work.inc();
                     byte[] hash = work.hash();
-                    if (hash[hash.length - 1] == 0 && hash[hash.length - 2] == 0 & hash[hash.length - 3] == 0) {
-                        logger.info("GOT ONE {}", getId());
+                    if (checkProofOfWork(hash, config.proofOfWorkLength())) {
+                        logger.debug("found proof of work {}", getId());
+                        // TODO: this should broadcast the proven block.
                         work = new Block(work.getSequence() + 1, Collections.singletonList(Txn.sourceTxn(getId())), work);
                     }
                 }
@@ -202,6 +205,15 @@ public class Miner implements Peer, Runnable {
                     logger.info("SYNC_TXN merge: {} <- {}", getId(), p.getId());
                 }
             }
+        }
+    }
+
+    static class MinerConfig {
+        /**
+         * @return number of trailing zero bits in hash for a block to be accepted.
+         */
+        public int proofOfWorkLength() {
+            return 12;
         }
     }
 }

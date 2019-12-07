@@ -12,13 +12,29 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ChainServiceImpl implements ChainService {
+    private static final Logger logger = LoggerFactory.getLogger(ChainServiceImpl.class);
 
-    private static final int MAX_MINERS = 8;
+    private static final int MINER_COUNT = 4;
+    private static final AtomicInteger MINER_ID = new AtomicInteger(0);
 
-    private ExecutorService threadPool = Executors.newFixedThreadPool(MAX_MINERS);
+    private ExecutorService threadPool;
     private List<Miner> miners = new LinkedList<>();
+
+    public ChainServiceImpl() {
+        this.threadPool = Executors.newFixedThreadPool(
+                MINER_COUNT,
+                (runnable) ->{
+                    Thread t = new Thread(runnable);
+                    t.setName("miner-" + MINER_ID.incrementAndGet());
+                    t.setUncaughtExceptionHandler((td, ex) -> logger.error("thread {} died", t.getName(), ex));
+                    return t;
+                });
+    }
 
     public void stop() {
         for (Miner m : miners) {
@@ -38,8 +54,8 @@ public class ChainServiceImpl implements ChainService {
         Miner m = new Miner(name);
         if (miners.contains(m)) {
             throw new ConflictException("miner " + name + " already exists");
-        } else if (miners.size() > MAX_MINERS) {
-            throw new BadRequestException("exceeded max miners: " + MAX_MINERS);
+        } else if (miners.size() > MINER_COUNT) {
+            throw new BadRequestException("exceeded max miners: " + MINER_COUNT);
         }
 
         if (!miners.isEmpty()) {
