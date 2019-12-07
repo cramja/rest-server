@@ -2,26 +2,29 @@ package com.cramja.crypto.core;
 
 import static com.cramja.crypto.core.Helpers.checkProofOfWork;
 
-import com.google.common.collect.ImmutableList;
+import com.cramja.crypto.core.Network.NetworkSubscriber;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.PriorityQueue;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.security.auth.x500.X500PrivateCredential;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Miner implements Peer, Runnable {
+public class Miner implements NetworkSubscriber, Runnable {
     private static final Logger logger = LoggerFactory.getLogger(Miner.class);
-    private static final MinerConfig config = new MinerConfig();
+    private static final ChainConfig config = new ChainConfig();
 
     private final String name;
     private final X500PrivateCredential credentials;
 
-    private List<Peer> peers = new LinkedList<>();
+    private Network network;
+    private ReentrantReadWriteLock networkLock = new ReentrantReadWriteLock();
+    private List<Block> queuedBlocks = new LinkedList<>();
+    private List<Txn> queuedTxns = new LinkedList<>();
     private boolean running = false;
     private PriorityQueue<Task> scheduledTasks = new PriorityQueue<>();
 
@@ -33,6 +36,18 @@ public class Miner implements Peer, Runnable {
         this.work = Block.init(name);
     }
 
+    public void init(Network network) {
+        if (this.network != null) {
+            throw new IllegalStateException();
+        }
+        this.network = network;
+        network.subscribe(this);
+    }
+
+    public String getId() {
+        return name;
+    }
+
     @Override
     public void run() {
         if (!running) {
@@ -41,23 +56,22 @@ public class Miner implements Peer, Runnable {
             return;
         }
         // sync with peers
-        scheduledTasks.add(new SyncPeersTask(5_000));
-        scheduledTasks.add(new SyncTxnsTask(10_000));
+        scheduledTasks.add(new SyncTxnsTask(1_000));
+        scheduledTasks.add(new SyncBlocksTask(10_000));
 
         while (running) {
             if (scheduledTasks.peek().ready()) {
                 Task t = scheduledTasks.poll();
                 t.run();
-                t.scheduleNextInterval();
-                scheduledTasks.add(t);
+                scheduledTasks.add(t.scheduleNextInterval());
             } else {
-                for (int i = 0; i < 100_000; i++) {
+                while (running && !scheduledTasks.peek().ready()) {
                     work.inc();
                     byte[] hash = work.hash();
                     if (checkProofOfWork(hash, config.proofOfWorkLength())) {
-                        logger.debug("found proof of work {}", getId());
+                        logger.debug("found proof of work {}", name);
                         // TODO: this should broadcast the proven block.
-                        work = new Block(work.getSequence() + 1, Collections.singletonList(Txn.sourceTxn(getId())), work);
+                        work = new Block(work.getSequence() + 1, Collections.singletonList(Txn.sourceTxn(name)), work);
                     }
                 }
             }
@@ -66,37 +80,10 @@ public class Miner implements Peer, Runnable {
 
     public void stop() {
         this.running = false;
-    }
-
-    @Override
-    public List<Peer> getPeers() {
-        return ImmutableList.copyOf(peers);
-    }
-
-    @Override
-    public void register(Peer peer) {
-        if (!peers.contains(peer)) {
-            peers.add(peer);
+        if (this.network != null) {
+            network.unsubscribe(this);
+            network = null;
         }
-    }
-
-    public void unregister(Peer peer) {
-        peers.remove(peer);
-    }
-
-    @Override
-    public String getId() {
-        return name;
-    }
-
-    @Override
-    public boolean isAlive() {
-        return running;
-    }
-
-    @Override
-    public Block getWorkingBlock() {
-        return work;
     }
 
     @Override
@@ -121,9 +108,27 @@ public class Miner implements Peer, Runnable {
         return name;
     }
 
+    @Override
+    public void accept(Block block) {
+        withWriteLock(() -> queuedBlocks.add(block));
+    }
+
+    @Override
+    public void accept(Txn txn) {
+        withWriteLock(() -> queuedTxns.add(txn));
+    }
+
+    private void withWriteLock(Runnable r) {
+        networkLock.writeLock().lock();
+        try {
+            r.run();
+        } finally {
+            networkLock.writeLock().unlock();
+        }
+    }
+
     abstract class Task implements Comparable<Task> {
         long exeTime;
-
         long interval;
 
         public Task(long interval) {
@@ -146,74 +151,59 @@ public class Miner implements Peer, Runnable {
             return Long.compare(exeTime, o.exeTime);
         }
 
-        public void scheduleNextInterval() {
+        public Task scheduleNextInterval() {
             final long now = System.currentTimeMillis();
             if (exeTime + interval < now) {
                 exeTime = now + interval;
             } else {
                 exeTime += interval;
             }
+            return this;
         }
-
     }
 
-    class SyncPeersTask extends Task {
-
-        public SyncPeersTask(long interval) {
+    class SyncBlocksTask extends Task {
+        public SyncBlocksTask(long interval) {
             super(interval);
         }
 
         @Override
         void run() {
-            HashSet<String> checked = new HashSet<>();
-            checked.add(getId());
+            List<Block> blocks = Miner.this.queuedBlocks;
+            withWriteLock(() -> Miner.this.queuedBlocks = new LinkedList<>());
 
-            List<Peer> peers = new LinkedList<>();
-            LinkedList<Peer> candidates = new LinkedList<>(Miner.this.peers);
-            while (!candidates.isEmpty()) {
-                Peer candidate = candidates.pop();
-                if (checked.contains(candidate.getId())) continue;
-                if (!candidate.isAlive()) continue;
-
-                checked.add(candidate.getId());
-                candidate.register(Miner.this);
-                peers.add(candidate);
-                candidates.addAll(candidate.getPeers());
+            for (Block block : blocks) {
+                if (block.getSequence() > Miner.this.work.getSequence()) {
+                    Miner.this.work = Block.newBlock(block, Miner.this.work);
+                    logger.info("SyncBlocksTask fast-forward: {} -> {}", Miner.this.name, block.getSequence());
+                }
             }
-            Miner.this.peers = peers;
-
-            logger.info("SYNC_PEER {}:{}", Miner.this, Miner.this.peers);
         }
-
     }
 
     class SyncTxnsTask extends Task {
-
         public SyncTxnsTask(long interval) {
             super(interval);
         }
 
         @Override
         void run() {
-            for (Peer p : Miner.this.peers) {
-                Block peerBlock = p.getWorkingBlock();
-                if (peerBlock.getSequence() > Miner.this.work.getSequence()) {
-                    Miner.this.work = Block.newBlock(peerBlock, Miner.this.work);
-                    logger.info("SYNC_TXN fast-forward: {} -> {}[{}]", getId(), p.getId(), peerBlock.getSequence());
-                } else {
-                    Miner.this.work = Miner.this.work.merge(peerBlock);
-                    logger.info("SYNC_TXN merge: {} <- {}", getId(), p.getId());
-                }
+            List<Txn> txns = Miner.this.queuedTxns;
+            withWriteLock(() -> Miner.this.queuedTxns = new LinkedList<>());
+
+            for (Txn txn : txns) {
+                // TODO: check that TXN has not already been submitted.
+                Miner.this.work.addTxn(txn);
             }
         }
     }
 
-    static class MinerConfig {
+    static class ChainConfig {
         /**
          * @return number of trailing zero bits in hash for a block to be accepted.
          */
         public int proofOfWorkLength() {
-            return 12;
+            return 8 + 8 + 6;
         }
     }
 }

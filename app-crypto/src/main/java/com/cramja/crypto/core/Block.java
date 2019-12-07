@@ -60,6 +60,10 @@ public class Block {
         return sequence;
     }
 
+    public void addTxn(Txn txn) {
+        this.txns.add(txn);
+    }
+
     public void inc() {
         this.nonce = nonce.add(BigInteger.ONE);
     }
@@ -84,8 +88,8 @@ public class Block {
      * @return a new block with all transactions of otherBlock (sans miner's txn)
      */
     public Block merge(Block otherBlock) {
-        HashSet<Txn> txns = new HashSet<>(otherBlock.getTxns().subList(1,otherBlock.getTxns().size()));
-        txns.addAll(this.getTxns().subList(1,this.getTxns().size()));
+        HashSet<Txn> txns = new HashSet<>(otherBlock.getTxns().subList(1, otherBlock.getTxns().size()));
+        txns.addAll(this.getTxns().subList(1, this.getTxns().size()));
         LinkedList<Txn> merged = new LinkedList<>(txns);
         merged.addFirst(this.txns.get(0));
         return new Block(this.sequence, merged, previous);

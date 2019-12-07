@@ -3,6 +3,7 @@ package com.cramja.crypto.web;
 import static java.util.stream.Collectors.toList;
 
 import com.cramja.crypto.core.Miner;
+import com.cramja.crypto.core.Network;
 import com.cramja.rest.core.exc.BadRequestException;
 import com.cramja.rest.core.exc.ConflictException;
 import com.cramja.rest.core.exc.NotFoundException;
@@ -23,6 +24,7 @@ public class ChainServiceImpl implements ChainService {
     private static final AtomicInteger MINER_ID = new AtomicInteger(0);
 
     private ExecutorService threadPool;
+    private Network network = new Network();
     private List<Miner> miners = new LinkedList<>();
 
     public ChainServiceImpl() {
@@ -58,9 +60,7 @@ public class ChainServiceImpl implements ChainService {
             throw new BadRequestException("exceeded max miners: " + MINER_COUNT);
         }
 
-        if (!miners.isEmpty()) {
-            m.register(miners.get(0));
-        }
+        m.init(network);
         miners.add(m);
         threadPool.submit(m);
     }

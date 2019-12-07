@@ -30,10 +30,6 @@ import org.bouncycastle.util.io.pem.PemWriter;
 
 public final class Crypto {
 
-    static {
-        Security.addProvider(new BouncyCastleProvider());
-    }
-
     private Crypto() {
     }
 
