@@ -15,6 +15,6 @@ public interface ChainService {
     void deleteMiner(@PathParam("name") String name);
 
     @Path(value = "/miners", method = "GET")
-    List<String> listMiners();
+    List<Long> listMiners();
 
 }

@@ -1,37 +1,36 @@
 package com.cramja.crypto.core;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import static java.util.Collections.singletonList;
+
+import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.Objects;
 
 public class Txn {
-    private List<Unit> input;
-    private List<Unit> output;
+    private List<Change> changes;
 
-    public Txn(List<Unit> input, List<Unit> output) {
-        this.input = input;
-        this.output = output;
+    public Txn(List<Change> changes) {
+        this.changes = changes;
     }
 
-    public static Txn sourceTxn(String name) {
-        return new Txn(Collections.emptyList(), Collections.singletonList(new Unit(name, 1)));
+    public Txn(Change ... changes) {
+        this.changes = Lists.newArrayList(changes);
     }
 
-    public List<Unit> getInput() {
-        return input;
+    public static Txn sourceTxn(Long id) {
+        return new Txn(singletonList(new Change(id, 1.0)));
     }
 
-    public List<Unit> getOutput() {
-        return output;
+    public List<Change> getChanges() {
+        return changes;
     }
 
-    public boolean isIncentiveTxn() {
-        return input.isEmpty() && output.size() == 1;
+    public boolean isSourceTxn() {
+        return changes.size() == 1;
     }
 
     public int hashCode() {
-        return Objects.hash(input, output);
+        return Objects.hash(changes);
     }
 
     @Override
@@ -43,20 +42,23 @@ public class Txn {
             return false;
         }
         Txn txn = (Txn) o;
-        return Objects.equals(input, txn.input) &&
-                Objects.equals(output, txn.output);
+        return Objects.equals(changes, txn.changes);
     }
 
-    public static class Unit {
-        private String id;
+    public static class Change {
+        private Long id;
         private double amt;
 
-        public Unit(String id, double amt) {
+        public Change(Long id, double amt) {
             this.id = id;
             this.amt = amt;
         }
 
-        public String getId() {
+        public static Change of(long id, double amt) {
+            return new Change(id, amt);
+        }
+
+        public Long getId() {
             return id;
         }
 
@@ -77,9 +79,10 @@ public class Txn {
             if (o == null || getClass() != o.getClass()) {
                 return false;
             }
-            Unit unit = (Unit) o;
-            return Double.compare(unit.amt, amt) == 0 &&
-                    Objects.equals(id, unit.id);
+            Change change = (Change) o;
+            return Double.compare(change.amt, amt) == 0 &&
+                    Objects.equals(id, change.id);
         }
     }
+
 }

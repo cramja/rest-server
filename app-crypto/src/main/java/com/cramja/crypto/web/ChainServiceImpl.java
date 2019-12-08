@@ -53,7 +53,7 @@ public class ChainServiceImpl implements ChainService {
 
     @Override
     public void createMiner(String name) {
-        Miner m = new Miner(name);
+        Miner m = new Miner(1L); // TODO
         if (miners.contains(m)) {
             throw new ConflictException("miner " + name + " already exists");
         } else if (miners.size() > MINER_COUNT) {
@@ -77,7 +77,7 @@ public class ChainServiceImpl implements ChainService {
     }
 
     @Override
-    public List<String> listMiners() {
+    public List<Long> listMiners() {
         return miners.stream().map(Miner::getId).collect(toList());
     }
 

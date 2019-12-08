@@ -18,22 +18,26 @@ public class Miner implements NetworkSubscriber, Runnable {
     private static final Logger logger = LoggerFactory.getLogger(Miner.class);
     private static final ChainConfig config = new ChainConfig();
 
-    private final String name;
+    private final Long id;
     private final X500PrivateCredential credentials;
 
     private Network network;
     private ReentrantReadWriteLock networkLock = new ReentrantReadWriteLock();
     private List<Block> queuedBlocks = new LinkedList<>();
     private List<Txn> queuedTxns = new LinkedList<>();
+
+    private Ledger ledger;
+
     private boolean running = false;
     private PriorityQueue<Task> scheduledTasks = new PriorityQueue<>();
 
     private Block work;
 
-    public Miner(String name) {
-        this.name = name;
+    public Miner(Long id) {
+        this.id = id;
         this.credentials = Crypto.createSelfSignedCredentials();
-        this.work = Block.init(name);
+        this.work = Block.init(id);
+        this.ledger = new Ledger();
     }
 
     public void init(Network network) {
@@ -44,8 +48,8 @@ public class Miner implements NetworkSubscriber, Runnable {
         network.subscribe(this);
     }
 
-    public String getId() {
-        return name;
+    public Long getId() {
+        return id;
     }
 
     @Override
@@ -69,9 +73,10 @@ public class Miner implements NetworkSubscriber, Runnable {
                     work.inc();
                     byte[] hash = work.hash();
                     if (checkProofOfWork(hash, config.proofOfWorkLength())) {
-                        logger.debug("found proof of work {}", name);
-                        // TODO: this should broadcast the proven block.
-                        work = new Block(work.getSequence() + 1, Collections.singletonList(Txn.sourceTxn(name)), work);
+                        logger.debug("{} found proof of work", id);
+                        network.broadcast(work);
+                        // TODO: fix
+//                        work = new Block(work.getSequence() + 1, Collections.singletonList(Txn.sourceTxn(id)), work);
                     }
                 }
             }
@@ -95,17 +100,12 @@ public class Miner implements NetworkSubscriber, Runnable {
             return false;
         }
         Miner miner = (Miner) o;
-        return Objects.equals(name, miner.name);
+        return Objects.equals(id, miner.id);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name);
-    }
-
-    @Override
-    public String toString() {
-        return name;
+        return Objects.hash(id);
     }
 
     @Override
@@ -174,8 +174,9 @@ public class Miner implements NetworkSubscriber, Runnable {
 
             for (Block block : blocks) {
                 if (block.getSequence() > Miner.this.work.getSequence()) {
-                    Miner.this.work = Block.newBlock(block, Miner.this.work);
-                    logger.info("SyncBlocksTask fast-forward: {} -> {}", Miner.this.name, block.getSequence());
+                    // TODO: fix
+//                    Miner.this.work = Block.newBlock(block, Miner.this.work);
+                    logger.info("SyncBlocksTask fast-forward: {} -> seq({})", Miner.this.id, block.getSequence());
                 }
             }
         }
@@ -193,7 +194,7 @@ public class Miner implements NetworkSubscriber, Runnable {
 
             for (Txn txn : txns) {
                 // TODO: check that TXN has not already been submitted.
-                Miner.this.work.addTxn(txn);
+//                Miner.this.work.addTxn(txn);
             }
         }
     }
