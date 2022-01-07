@@ -19,7 +19,7 @@
     <bouncy-castle.version>1.64</bouncy-castle.version>
     <flyway-maven-plugin.version>6.0.8</flyway-maven-plugin.version>
     <guava.version>28.1-jre</guava.version>
-    <h2.version>1.4.200</h2.version>
+    <h2.version>2.0.206</h2.version>
     <hikari.version>3.4.1</hikari.version>
     <jackson.version>2.10.1</jackson.version>
     <jdbi3.version>3.10.1</jdbi3.version>
