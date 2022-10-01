@@ -21,7 +21,7 @@
     <guava.version>28.1-jre</guava.version>
     <h2.version>1.4.200</h2.version>
     <hikari.version>3.4.1</hikari.version>
-    <jackson.version>2.10.1</jackson.version>
+    <jackson.version>2.12.6.1</jackson.version>
     <jdbi3.version>3.10.1</jdbi3.version>
     <lombok.version>1.18.10</lombok.version>
     <logback-classic.version>1.2.3</logback-classic.version>
